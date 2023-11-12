@@ -1,0 +1,10 @@
+{
+    "serial": [
+        {"id": 0, "description": "Pippo",      "device": "/dev/ttyS0", "speed": 9600, "parity": 0, "stop": 0, "bits": 8 },
+        {"id": 1, "description": "Pluto",      "device": "/dev/ttyS1", "speed": 9600, "parity": 0, "stop": 0, "bits": 8 },
+        {"id": 2, "description": "Paperino",   "device": "/dev/ttyS2", "speed": 9600, "parity": 0, "stop": 0, "bits": 8 }
+    ],
+    "tunnel": [
+        {"id": 0, "description": "primo", "DTE": [0, 1], "DCE": 2, "EscapeChar1": 1, "EscapeChar2": 97 }
+    ]
+}

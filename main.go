@@ -44,6 +44,15 @@ type Serial struct {
 	DParity     int          `json:"parity"`
 	DStop       int          `json:"stop"`
 }
+/*
+// TCPSocket represents a TCP socket in listening mode.
+type TCPSocket struct {
+	ID         int          `json:"id"`
+	Port       int          `json:"port"`
+	Address    string       `json:"address"`
+	listener   net.Listener	`json:"-"`
+	Channels   [5]chan byte `json:"-"`
+}*/
 
 // Tunnel represents a set of connected DTEs and one DCE
 type Tunnel struct {
@@ -243,7 +252,7 @@ func SerialManager(serialPort Serial) {
 func TunnelManager(tunnel Tunnel, monitor *CLI) {
 	var escaped bool = false
 
-	DTEToMonitor := make(map[int]bool)
+	monitor.DTEToMonitor = make(map[int]bool)
 
 	// Handle incoming data from DTEs.
 	for _, dte := range tunnel.DTE {
@@ -252,16 +261,19 @@ func TunnelManager(tunnel Tunnel, monitor *CLI) {
 				select {
 				case data := <-dte.Channels[COUTPUT]:
 					// Check if it's the escape sequence to connect to the monitor.
-					if byte(data) == tunnel.EscapeChar1 && !escaped && !DTEToMonitor[dte.ID] {
+					if byte(data) == tunnel.EscapeChar1 && !escaped && !monitor.DTEToMonitor[dte.ID] {
 						escaped = true
 						continue
 					}
 					if escaped {
 						if byte(data) == tunnel.EscapeChar2 {
 							if !monitor.Used {
-								DTEToMonitor[dte.ID] = true // come se esce da sta trappola?
+								monitor.DTEToMonitor[dte.ID] = true // come se esce da sta trappola?
 								logger.Infof("DTE %d connected to monitor\n", dte.ID)
-								monitor.stdout = &dte.Channels[CINPUT]
+//								monitor.stdout = &dte.Channels[CINPUT]
+								monitor.sconnected = &dte
+								monitor.tconnected = &tunnel
+								monitor.Used = true
 								continue
 							} else {
 								logger.Warnf("DTE %d request monitor but monitor is already used.\n", dte.ID)
@@ -274,7 +286,7 @@ func TunnelManager(tunnel Tunnel, monitor *CLI) {
 						}
 					}
 					// Route data to DCE.
-					if !DTEToMonitor[dte.ID] {
+					if !monitor.DTEToMonitor[dte.ID] {
 						tunnel.DCE.Channels[CINPUT] <- data
 					} else {
 						monitor.stdin <- data
@@ -324,10 +336,12 @@ func main() {
 //	monitorOut := make(chan byte)
 	monitorQuit := make(chan byte)
 	monitor := NewCLI(monitorIn, nil, monitorQuit)
-	monitor.RegisterCommand("Test", "A test command", testHandler)
+	monitor.RegisterCommand("test", "A test command", testHandler)
+	monitor.RegisterCommand("exit", "terminatemonitor session", exitMonitor)
+	monitor.RegisterCommand("show", "shows configuration items", showHandler)
 	go monitor.Run()
 
-	logger.SetLevel(logrus.TraceLevel)
+	logger.SetLevel(logrus.InfoLevel)
 	logger.SetReportCaller(true)
 
 	config, err := initialize("tunnel.json")

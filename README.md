@@ -1,43 +1,47 @@
 # Serial Tunnel Utility
 The Serial Tunnel Utility is a Go application designed to act as a 
 proxy/gateway between a number of serial devices. It supports the creation 
-of multiple tunnels, where a tunnel consists of connected Data Terminal 
-Equipment (DTE) and one Data Communication Equipment (DCE). The utility 
-provides a flexible and configurable way to manage serial communication.
+of multiple tunnels, where a tunnel consists of connected remotes and one 
+terminal. The utility provides a flexible and configurable way to manage 
+serial communication.
 
 ## Features
-Multiple Serial Devices: Configure and manage multiple DTE (Data Terminal 
-Equipment) and one DCE (Data Communication Equipment) devices.
+Multiple Serial Devices: Configure and manage multiple remotes (network 
+appliances/server uarts) and one physical terminal.
 
-Tunnel Configuration: Define tunnels that connect a set of DTEs with a 
-single DCE, facilitating communication between them.
+SSH terminal: Optional embedded SSH server so a remote operator can use the 
+same console hub as the local VT100 (one client at a time per tunnel).
 
-Escape Sequence: Utilize a special escape sequence emitted by DTEs to 
-redirect the traffic to a monitoring channel. Only the DTE that emits 
-the escape sequence is redirected, while other devices in the same tunnel 
-continue normal operation.
+SSH remote: Optional remote serial line reached over SSH instead of a local 
+serial port.
+
+Tunnel Configuration: Define tunnels that connect a set of device consoles 
+with one local serial terminal, and optionally an SSH terminal.
+
+Escape Sequence: From a terminal, send `EscapeChar1` then a digit `0`–`9` to 
+select which device console is active. All terminals (serial and SSH) share 
+the same selection. A separate escape from a device console opens the 
+configuration monitor.
 
 Text Interface Monitor: Access a text interface monitor that allows 
 configuration changes, both local and system-wide. System-wide configuration 
-includes defining physical interfaces, roles (DTE or DCE), and specifying 
-the number and composition of tunnels.
+includes defining physical interfaces.
 
 ## Getting Started
 Prerequisites
 * Go installed on your machine.
+
 ## Installation
-Clone the repository:
-```
-git clone https://github.com/alessandrocarminati/serial_tunnel.git
-```
-Change into the project directory:
-```
-cd serial_tunnel
-```
 Build the application:
 ```
 go build
 ```
+or
+```
+GOARCH=arm go build
+```
+to build a different target.
+
 Run the application:
 ```
 ./serial_tunnel
@@ -63,4 +67,72 @@ See the example configuration.
     ]
 }
 ```
-NOTE: IDs are numeric and must be progrssive numbers starting from 0
+NOTE: IDs are numeric and must be unique across `serial` and `ssh` entries.
+
+### SSH remote
+
+Add an `ssh` array entry and reference its `id` as the tunnel `DCE`:
+
+```
+"ssh": [
+    {
+        "id": 10,
+        "description": "Pi console",
+        "host": "192.168.1.50",
+        "port": 22,
+        "user": "pi",
+        "keyfile": "~/.ssh/id_rsa",
+        "remote_command": "cat /dev/ttyAMA0"
+    }
+],
+"tunnel": [
+    {"id": 0, "description": "lab", "DTE": [0, 1], "DCE": 10, "EscapeChar1": 13, "EscapeChar2": 65 }
+]
+```
+
+| Field | Description |
+|-------|-------------|
+| `host` | SSH server hostname or IP |
+| `port` | SSH port (default 22) |
+| `user` | Login user (default `root`) |
+| `password` | Password auth (optional if `keyfile` is set) |
+| `keyfile` | Path to private key (supports `~`) |
+| `remote_command` | Command run on connect (e.g. `cat /dev/ttyUSB0`). If omitted, an interactive shell is started |
+| `connect_timeout` | Dial timeout in seconds (default 10) |
+
+DTE endpoints must remain local serial ports.
+
+### SSH terminal
+
+Add `ssh_terminal` to a tunnel. The hub listens for **one** SSH client; a 
+second connection is rejected until the first disconnects.
+
+```
+"tunnel": [
+    {
+        "id": 0,
+        "description": "lab",
+        "DTE": [0, 1],
+        "DCE": 2,
+        "EscapeChar1": 1,
+        "EscapeChar2": 97,
+        "ssh_terminal": {
+            "listen": "0.0.0.0:2222",
+            "host_key_file": "ssh_host_key",
+            "password": "tunnel",
+            "authorized_keys_file": "authorized_keys"
+        }
+    }
+]
+```
+
+| Field | Description |
+|-------|-------------|
+| `listen` | TCP address to bind (e.g. `0.0.0.0:2222`) |
+| `host_key_file` | Server host key PEM path (created if missing) |
+| `password` | Password authentication (optional) |
+| `authorized_keys_file` | OpenSSH `authorized_keys` file (optional) |
+
+Connect with a normal SSH client (`ssh -p 2222 user@hub`). Use the same 
+escape + digit sequence as on the serial terminal to switch consoles.
+

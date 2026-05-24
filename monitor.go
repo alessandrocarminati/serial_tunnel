@@ -6,31 +6,26 @@ import (
 	"sync"
 )
 
-// CommandFunction is the type of functions that can be registered as commands.
-type CommandFunction func(args []string, dte *Serial, tunnel *Tunnel, m *CLI)
+type CommandFunction func(args []string, tunnel *Tunnel, m *CLI)
 
-// Command holds information about a registered command.
 type Command struct {
 	Name        string
 	HelpText    string
 	Handler     CommandFunction
 }
 
-// CLI represents the command-line interface.
 type CLI struct {
-	commands   map[string]Command
-	stdin      chan byte
-	stdout     *chan byte
-	sconnected *Serial
-	tconnected *Tunnel
-	quit       chan byte
-	Used       bool
-	registerMu sync.Mutex
-	ConnectedID int
-	DTEToMonitor map[int]bool
+	commands        map[string]Command
+	stdin           chan byte
+	stdout          *chan byte
+	tconnected      *Tunnel
+	quit            chan byte
+	Used            bool
+	registerMu      sync.Mutex
+	ConnectedID     int
+	RemoteToMonitor map[int]bool
 }
 
-// NewCLI initializes a new CLI instance.
 func NewCLI(stdin chan byte, stdout *chan byte, quit chan byte) *CLI {
 	return &CLI{
 		commands: make(map[string]Command),
@@ -41,7 +36,6 @@ func NewCLI(stdin chan byte, stdout *chan byte, quit chan byte) *CLI {
 	}
 }
 
-// RegisterCommand registers a new command.
 func (c *CLI) RegisterCommand(name, helpText string, handler CommandFunction) {
 	c.registerMu.Lock()
 	defer c.registerMu.Unlock()
@@ -54,56 +48,48 @@ func (c *CLI) RegisterCommand(name, helpText string, handler CommandFunction) {
 	}
 }
 
-// ListCommands returns a list of registered commands and their help text.
 func (c *CLI) ListCommands() string {
 	c.registerMu.Lock()
 	defer c.registerMu.Unlock()
 
 	logger.Debugf("Help command issued in the CLI")
 	var result strings.Builder
-	result.WriteString("Available commands:\n")
+	result.WriteString("Available commands:\r\n")
 	for _, cmd := range c.commands {
-		result.WriteString(fmt.Sprintf("%-15s %s\n", cmd.Name, cmd.HelpText))
+		result.WriteString(fmt.Sprintf("%-15s %s\r\n", cmd.Name, cmd.HelpText))
 	}
 	return result.String()
 }
 
-// Run starts the CLI's main loop.
 func (c *CLI) Run() {
 	logger.Infof("CLI is alive.")
 	go c.inputLoop()
-//	c.outputLoop()
 }
 
-/*// outputLoop writes to stdout.
-func (c *CLI) outputLoop() {
-	for {
-		select {
-		case textByte := <-c.stdout:
-			fmt.Print(string(textByte))
-		case <-c.quit:
-			return
-		}
-	}
-}*/
-
-
-// inputLoop reads from stdin channel and processes commands.
 func (c *CLI) inputLoop() {
 	buffer := make([]byte, 0)
 
 	for {
 		select {
 		case b := <-c.stdin:
-			if b == 13 {
-				// Simulate Enter key press
+			switch {
+			case b == 13:
 				input := string(buffer)
 				logger.Infof("CLI received a the command \"%s\".", input)
 				c.parseInput(input)
 				buffer = nil // reset buffer
-			} else {
+			case b == 8 || b == 127:
+				if len(buffer) > 0 {
+					buffer = buffer[:len(buffer)-1]
+					c.tconnected.writeToTerminals(8)
+					c.tconnected.writeToTerminals(32)
+					c.tconnected.writeToTerminals(8)
+				}
+			case b > 31 && b < 127:
 				buffer = append(buffer, b)
 				logger.Tracef("CLI is receiving things: last char= %d current buffer\"%s\"", b, string(buffer))
+				c.tconnected.writeToTerminals(b)
+			default:
 			}
 		case <-c.quit:
 			return
@@ -111,7 +97,6 @@ func (c *CLI) inputLoop() {
 	}
 }
 
-// parseInput processes the input string.
 func (c *CLI) parseInput(input string) {
 	args := strings.Fields(input)
 	if len(args) == 0 {
@@ -122,7 +107,7 @@ func (c *CLI) parseInput(input string) {
 	switch command {
 	case "help":
 		for _, b := range []byte(c.ListCommands()) {
-			c.sconnected.Channels[CINPUT] <- b
+			c.tconnected.writeToTerminals(b)
 		}
 	case "quit":
 		c.quit <- 1
@@ -132,44 +117,46 @@ func (c *CLI) parseInput(input string) {
 		c.registerMu.Unlock()
 
 		if found {
-			cmd.Handler(args[1:], c.sconnected, c.tconnected, c)
+			cmd.Handler(args[1:], c.tconnected, c)
 		} else {
-			for _, b := range []byte(fmt.Sprintf("Unknown command: %s\n", command)) {
-				c.sconnected.Channels[CINPUT] <- b
+			for _, b := range []byte(fmt.Sprintf("\r\nUnknown command: %s\r\ntype 'help' to see available commands\r\n", command)) {
+				c.tconnected.writeToTerminals(b)
 			}
 		}
 	}
 }
 
-// test command handler function.
-func testHandler(args []string, dte *Serial, t *Tunnel, m *CLI) {
+func testHandler(args []string, t *Tunnel, m *CLI) {
 	logger.Infof("testHandler function executed.")
-	output := fmt.Sprintf("Test command executed with args: %v\n", args)
+	output := fmt.Sprintf("Test command executed with args: %v\r\n", args)
 	for _, b := range []byte(output) {
-		dte.Channels[CINPUT] <- b
+		t.writeToTerminals(b)
 	}
 }
 
 
-// showHandler handles the 'show' command and its subcommands.
-func showHandler(args []string, dte *Serial, t *Tunnel, m *CLI) {
+func showHandler(args []string, t *Tunnel, m *CLI) {
 	subcommands := []Command{
 		{
-			Name:     "current_tunnel_id",
-			HelpText: "Show current tunnel ID",
-			Handler:  showCurrentTunnelID,
+			Name:     "Remote",
+			HelpText: "Show current Remotes",
+			Handler:  showRemote,
 		},
-		// Add more subcommands as needed
+		{
+			Name:     "terminal",
+			HelpText: "Show ssh terminals state",
+			Handler:  showTerminal,
+		},
 	}
 
 	logger.Infof("showHandler function executed.")
 	if len(args) == 0 || args[0] == "?" {
-		help := "Available options for 'show':\n"
+		help := "Available options for 'show':\r\n"
 		for _, cmd := range subcommands {
-			help += fmt.Sprintf("%-25s %s\n", cmd.Name, cmd.HelpText)
+			help += fmt.Sprintf("%-25s %s\r\n", cmd.Name, cmd.HelpText)
 		}
 		for _, b := range []byte(help) {
-			dte.Channels[CINPUT] <- b
+			t.writeToTerminals(b)
 		}
 		return
 	}
@@ -177,36 +164,51 @@ func showHandler(args []string, dte *Serial, t *Tunnel, m *CLI) {
 	subcommandName := args[0]
 	for _, cmd := range subcommands {
 		if cmd.Name == subcommandName {
-			cmd.Handler(args[1:], dte, t, m)
+			cmd.Handler(args[1:], t, m)
 			return
 		}
 	}
 
 	logger.Debugf("Unknown \"show\" subcommand requested (%s).", args[0])
-	for _, b := range []byte("Unknown option. Use 'show ?' for help.\n") {
-	dte.Channels[CINPUT] <- b
+	for _, b := range []byte("Unknown option. Use 'show ?' for help.\r\n") {
+	t.writeToTerminals(b)
 	}
 }
 
-// 
-func showCurrentTunnelID(args []string, dte *Serial, t *Tunnel, m *CLI) {
-	// Logic to show current tunnel ID
-	logger.Infof("showCurrentTunnelID function executed.")
-	output := fmt.Sprintf("Test command executed with args: %v\n", args)
+func showRemote(args []string, t *Tunnel, m *CLI) {
+	logger.Infof("showRemote function executed.")
+	output := fmt.Sprintf("Remotes summary (%d):\r\n", len(t.Remote))
+	for i, Remote := range  t.Remote {
+		line := fmt.Sprintf("%d: %s\r\n", i, Remote.EndpointConfig())
+		output = output + line
+	}
 	for _, b := range []byte(output) {
-		dte.Channels[CINPUT] <- b
+		t.writeToTerminals(b)
 	}
 }
 
-// 
-func exitMonitor(args []string, dte *Serial, t *Tunnel, m *CLI) {
-	// Logic to show current tunnel ID
+func showTerminal(args []string, t *Tunnel, m *CLI) {
+	logger.Infof("showvterminal function executed.")
+
+	output := fmt.Sprintf("Terminals state:\r\n")
+	Terminal := fmt.Sprintf("SERIAL: %s\r\n", t.Terminal.EndpointConfig())
+	vTerminal := "Not connected\r\n"
+	if t.sshTerminal != nil {
+		vTerminal = fmt.Sprintf("SSH: %s\r\n", t.sshTerminal.EndpointConfig())
+	}
+	output = output + Terminal + vTerminal
+
+	for _, b := range []byte(output) {
+		t.writeToTerminals(b)
+	}
+}
+
+func exitMonitor(args []string, t *Tunnel, m *CLI) {
 	logger.Infof("exitMonitor function executed.")
-	output := fmt.Sprintf("Disconnected!\n")
+	output := fmt.Sprintf("\r\nDisconnected!\r\n")
 	for _, b := range []byte(output) {
-		dte.Channels[CINPUT] <- b
+		t.writeToTerminals(b)
+
 	}
-	m.DTEToMonitor[dte.ID]=false
-
+	m.Used = false
 }
-

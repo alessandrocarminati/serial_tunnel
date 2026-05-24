@@ -1,10 +1,61 @@
 {
-    "serial": [
-        {"id": 0, "description": "Pippo",      "device": "/dev/ttyS0", "speed": 9600, "parity": 0, "stop": 0, "bits": 8 },
-        {"id": 1, "description": "Pluto",      "device": "/dev/ttyS1", "speed": 9600, "parity": 0, "stop": 0, "bits": 8 },
-        {"id": 2, "description": "Paperino",   "device": "/dev/ttyS2", "speed": 9600, "parity": 0, "stop": 0, "bits": 8 }
-    ],
-    "tunnel": [
-        {"id": 0, "description": "primo", "DTE": [0, 1], "DCE": 2, "EscapeChar1": 1, "EscapeChar2": 97 }
-    ]
+   "debug": false,
+   "serial":[
+      {
+         "id":0,
+         "description":"ADM3",
+         "device":"/dev/ttyUSB0",
+         "speed":9600,
+         "parity":0,
+         "stop":0,
+         "bits":8
+      },
+      {
+         "id":1,
+         "description":"Enclosure",
+         "device":"/dev/ttyUSB1",
+         "speed":9600,
+         "parity":0,
+         "stop":0,
+         "bits":8
+      },
+      {
+         "id":2,
+         "description":"Switch",
+         "device":"/dev/ttyUSB2",
+         "speed":9600,
+         "parity":0,
+         "stop":0,
+         "bits":8
+      },
+      {
+         "id":3,
+         "description":"pbx",
+         "device":"/dev/ttyUSB3",
+         "speed":9600,
+         "parity":0,
+         "stop":0,
+         "bits":8
+      }
+   ],
+   "tunnel":[
+      {
+         "id":0,
+         "description":"Tunne_server",
+         "remote":[
+            1,
+            2,
+            3
+         ],
+         "terminal":0,
+         "EscapeChar1":1,
+         "EscapeChar2":18,
+         "ssh_terminal":{
+            "listen":"0.0.0.0:2222",
+            "host_key_file":"/etc/serial_tunnel/id_rsa",
+            "password":"tunnel",
+            "authorized_keys_file":"/etc/serial_tunnel/authorized_keys"
+         }
+      }
+   ]
 }

@@ -138,7 +138,7 @@ func testHandler(args []string, t *Tunnel, m *CLI) {
 func showHandler(args []string, t *Tunnel, m *CLI) {
 	subcommands := []Command{
 		{
-			Name:     "Remote",
+			Name:     "remote",
 			HelpText: "Show current Remotes",
 			Handler:  showRemote,
 		},

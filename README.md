@@ -5,6 +5,8 @@ of multiple tunnels, where a tunnel consists of connected remotes and one
 terminal. The utility provides a flexible and configurable way to manage 
 serial communication.
 
+[![sample video](https://img.youtube.com/vi/SP6MwDNjP1E/0.jpg)](https://youtu.be/SP6MwDNjP1E)
+
 ## Features
 Multiple Serial Devices: Configure and manage multiple remotes (network 
 appliances/server uarts) and one physical terminal.
